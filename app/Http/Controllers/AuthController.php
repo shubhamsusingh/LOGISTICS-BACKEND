@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Driver;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -22,6 +23,12 @@ class AuthController extends Controller
             'password' => Hash::make($request->password),
             'role' => $request->role,
         ]);
+        if ($user->role == 2) {
+            $driver = Driver::create([
+                'user_id' => $user->id,
+                'status' => 0,
+            ]);
+        }
         $token = $user->createToken('auth_token')->plainTextToken;
 
         return response()->json(['user' => $user, 'token' => $token], 201);
