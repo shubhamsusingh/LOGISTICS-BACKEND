@@ -11,4 +11,5 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::get('/getDriverList', [DriverController::class, 'getAvailableDrivers']);
     Route::get('/vehicleList', [VehicleController::class, 'vehicleList']);
+    Route::post('/addVehicle', [VehicleController::class, 'addVehicle']);
 });
