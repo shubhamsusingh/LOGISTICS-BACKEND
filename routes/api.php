@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\AdminDashboardController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\DriverController;
 use App\Http\Controllers\VehicleController;
@@ -12,4 +13,5 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/getDriverList', [DriverController::class, 'getAvailableDrivers']);
     Route::get('/vehicleList', [VehicleController::class, 'vehicleList']);
     Route::post('/addVehicle', [VehicleController::class, 'addVehicle']);
+    Route::get('/dashboard', [AdminDashboardController::class, 'dashboardStats']);
 });
