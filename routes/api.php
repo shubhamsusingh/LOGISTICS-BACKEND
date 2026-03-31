@@ -14,4 +14,6 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/vehicleList', [VehicleController::class, 'vehicleList']);
     Route::post('/addVehicle', [VehicleController::class, 'addVehicle']);
     Route::get('/dashboard', [AdminDashboardController::class, 'dashboardStats']);
+    Route::post('updateVehicle', [VehicleController::class, 'updateVehicle']);
+    Route::delete('/vehicle/{id}', [VehicleController::class, 'deleteVehicle']);
 });
