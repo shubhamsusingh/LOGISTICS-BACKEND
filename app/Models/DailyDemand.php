@@ -20,6 +20,7 @@ class DailyDemand extends Model
         'demad_date',
         'quantity',
         'status',
+        'is_assigned',
     ];
 
     /**
