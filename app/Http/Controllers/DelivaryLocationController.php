@@ -42,4 +42,16 @@ class DelivaryLocationController extends Controller
             'data' => $location,
         ], 201);
     }
+
+    public function getVendorLocations()
+    {
+        $locations = DeliveryLocation::with('vendor')
+            ->where('vendor_id', 1)
+            ->get();
+
+        return response()->json([
+            'message' => 'Delivery locations fetched successfully',
+            'data' => $locations,
+        ], 200);
+    }
 }
