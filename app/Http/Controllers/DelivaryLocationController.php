@@ -43,6 +43,70 @@ class DelivaryLocationController extends Controller
         ], 201);
     }
 
+    public function update(Request $request)
+    {
+        // Step 1: Validate input
+        $request->validate([
+            'id' => 'required',
+            'vendor_id' => 'required|integer',
+            'name' => 'required|string|max:255',
+            'latitude' => 'required|numeric',
+            'longitude' => 'required|numeric',
+            'address' => 'required|string',
+        ]);
+
+        // Step 2: Find location
+        $location = DeliveryLocation::find($request->id);
+
+        if (! $location) {
+            return response()->json([
+                'message' => 'Delivery location not found',
+            ], 404);
+        }
+
+        // Step 3: Check if vendor exists
+        $vendor = Vendor::find($request->vendor_id);
+
+        if (! $vendor) {
+            return response()->json([
+                'message' => 'Vendor not found',
+            ], 404);
+        }
+
+        // Step 4: Update location
+        $location->update([
+            'vendor_id' => $request->vendor_id,
+            'center_name' => $request->name,
+            'latitude' => $request->latitude,
+            'longitude' => $request->longitude,
+            'address' => $request->address,
+        ]);
+
+        return response()->json([
+            'message' => 'Delivery location updated successfully',
+            'data' => $location,
+        ], 200);
+    }
+
+    public function destroy($id)
+    {
+        // Step 1: Find location
+        $location = DeliveryLocation::find($id);
+
+        if (! $location) {
+            return response()->json([
+                'message' => 'Delivery location not found',
+            ], 404);
+        }
+
+        // Step 2: Delete
+        $location->delete();
+
+        return response()->json([
+            'message' => 'Delivery location deleted successfully',
+        ], 200);
+    }
+
     public function getVendorLocations()
     {
         $locations = DeliveryLocation::with('vendor')
