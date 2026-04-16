@@ -21,4 +21,6 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/generate-routes', [RouteController::class, 'generateRoutes']);
     Route::post('/add-locations', [DelivaryLocationController::class, 'store']);
     Route::get('/delivary-location-list', [DelivaryLocationController::class, 'getVendorLocations']);
+    Route::post('/update', [DelivaryLocationController::class, 'update']);
+    Route::delete('/delete-locations/{id}', [DelivaryLocationController::class, 'destroy']);
 });
