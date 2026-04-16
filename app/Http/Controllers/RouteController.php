@@ -15,6 +15,8 @@ class RouteController extends Controller
 
     private float $depotLng = 72.86751;
 
+    private float $lastRouteDistance = 0;
+
     public function generateRoutes()
     {
         DB::beginTransaction();
@@ -67,15 +69,15 @@ class RouteController extends Controller
                 $totalLoad = collect($routeData)->sum('quantity');
 
                 // ✅ Optimize stop order using Haversine (no API needed)
+                // ✅ Optimize stop order using Haversine (no API needed)
                 $orderedDemands = $this->optimizeRouteOrder($routeData);
 
                 $route = LogisticRoute::create([
                     'vehicle_id' => $vehicle->id,
                     'route_date' => now(),
-                    'total_distance' => 0,
+                    'total_distance' => $this->lastRouteDistance, // ✅ now has real value in km
                     'total_load' => $totalLoad,
                 ]);
-
                 foreach ($orderedDemands as $index => $demand) {
                     RouteStop::create([
                         'route_id' => $route->route_id,
@@ -107,15 +109,30 @@ class RouteController extends Controller
     // ✅ THIS METHOD WAS MISSING — now restored
     private function optimizeRouteOrder(array $demands): array
     {
-        if (count($demands) <= 1) {
+        // ✅ Always reset before each route calculation
+        $this->lastRouteDistance = 0;
+
+        if (count($demands) === 0) {
             return $demands;
         }
 
-        // Load lat/lng for each demand's location
+        // ✅ Handle single stop: depot → stop → back to depot
+        if (count($demands) === 1) {
+            $loc = DeliveryLocation::find($demands[0]->location_id);
+
+            if ($loc) {
+                $toStop = $this->haversineDistance($this->depotLat, $this->depotLng, $loc->latitude, $loc->longitude);
+                $backToDepot = $this->haversineDistance($loc->latitude, $loc->longitude, $this->depotLat, $this->depotLng);
+                $this->lastRouteDistance = round(($toStop + $backToDepot) / 1000, 2);
+            }
+
+            return $demands;
+        }
+
+        // Multiple stops
         $locationIds = collect($demands)->pluck('location_id')->unique()->toArray();
         $locations = DeliveryLocation::whereIn('id', $locationIds)->get()->keyBy('id');
 
-        // Build coordinate list: [0] = depot, [1..n] = stops
         $coords = [[
             'lat' => $this->depotLat,
             'lng' => $this->depotLng,
@@ -136,14 +153,12 @@ class RouteController extends Controller
             ];
         }
 
-        // Build distance matrix using Haversine
         $matrix = $this->fetchDistanceMatrix($coords);
-
-        // Nearest-neighbor greedy algorithm starting from depot (index 0)
         $n = count($coords);
         $visited = array_fill(0, $n, false);
         $visited[0] = true;
         $ordered = [];
+        $orderedCoords = [];
         $current = 0;
 
         for ($step = 0; $step < $n - 1; $step++) {
@@ -159,8 +174,23 @@ class RouteController extends Controller
 
             $visited[$nearest] = true;
             $ordered[] = $coords[$nearest]['demand'];
+            $orderedCoords[] = $nearest;
             $current = $nearest;
         }
+
+        // Calculate total distance: depot → stop1 → stop2 → ... → last stop → depot
+        $totalDistance = 0;
+        $prev = 0;
+
+        foreach ($orderedCoords as $idx) {
+            $totalDistance += $matrix[$prev][$idx];
+            $prev = $idx;
+        }
+
+        // ✅ Add return trip: last stop → depot
+        $totalDistance += $matrix[$prev][0];
+
+        $this->lastRouteDistance = round($totalDistance / 1000, 2); // km
 
         return $ordered;
     }
