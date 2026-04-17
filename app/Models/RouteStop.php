@@ -20,14 +20,14 @@ class RouteStop extends Model
     ];
 
     // 🔗 Relationship: Stop belongs to Route
-    public function route()
-    {
-        return $this->belongsTo(Route::class, 'route_id', 'route_id');
-    }
-
-    // 🔗 Relationship: Stop belongs to Delivery Location
     public function location()
     {
-        return $this->belongsTo(DeliveryLocation::class, 'location_id', 'location_id');
+        return $this->belongsTo(DeliveryLocation::class, 'location_id', 'id');
+    }
+
+    // Also fix the route relationship (your model says Route::class but correct class is LogisticRoute):
+    public function route()
+    {
+        return $this->belongsTo(LogisticRoute::class, 'route_id', 'route_id');
     }
 }

@@ -4,6 +4,7 @@ use App\Http\Controllers\AdminDashboardController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\DelivaryLocationController;
 use App\Http\Controllers\DriverController;
+use App\Http\Controllers\DriverDashboardController;
 use App\Http\Controllers\RouteController;
 use App\Http\Controllers\VehicleController;
 use Illuminate\Support\Facades\Route;
@@ -23,4 +24,16 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/delivary-location-list', [DelivaryLocationController::class, 'getVendorLocations']);
     Route::post('/update', [DelivaryLocationController::class, 'update']);
     Route::delete('/delete-locations/{id}', [DelivaryLocationController::class, 'destroy']);
+});
+Route::middleware('auth:sanctum')->prefix('driver')->group(function () {
+
+    // Full dashboard — driver + vehicle + all routes with stops & demand
+    Route::get('/driver-dashboard', [DriverDashboardController::class, 'getDashboard']);
+
+    // Single route detail with ordered stops
+    Route::get('/route/{routeId}', [DriverDashboardController::class, 'getRouteDetail']);
+
+    // Mark a stop as delivered
+    Route::post('/stop/{stopId}/mark-delivered', [DriverDashboardController::class, 'markDelivered']);
+
 });
