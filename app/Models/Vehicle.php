@@ -26,4 +26,9 @@ class Vehicle extends Model
     {
         return $this->belongsTo(Driver::class);
     }
+
+    public function routes()
+    {
+        return $this->hasMany(LogisticRoute::class, 'vehicle_id', 'id');
+    }
 }
