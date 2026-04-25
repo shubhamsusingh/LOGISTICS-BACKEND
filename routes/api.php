@@ -3,6 +3,7 @@
 use App\Http\Controllers\AdminDashboardController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\DelivaryLocationController;
+use App\Http\Controllers\DeliveryDemandController;
 use App\Http\Controllers\DriverController;
 use App\Http\Controllers\DriverDashboardController;
 use App\Http\Controllers\RouteController;
@@ -24,6 +25,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/delivary-location-list', [DelivaryLocationController::class, 'getVendorLocations']);
     Route::post('/update', [DelivaryLocationController::class, 'update']);
     Route::delete('/delete-locations/{id}', [DelivaryLocationController::class, 'destroy']);
+    Route::get('/Delivery-demad', [DeliveryDemandController::class, 'getDeliveryDemand']);
+    Route::post('/add-demand', [DeliveryDemandController::class, 'store']);
 });
 Route::middleware('auth:sanctum')->prefix('driver')->group(function () {
 
