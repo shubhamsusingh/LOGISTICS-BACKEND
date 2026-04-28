@@ -46,9 +46,9 @@ class DriverDashboardController extends Controller
                 'stops.location',
                 'stops.location.dailyDemands',
             ])
+            ->whereDate('route_date', now()->toDateString())  // ✅ only today
             ->orderBy('route_date', 'desc')
             ->get();
-
         // Format routes
         $routesData = $routes->map(function ($route) {
             $stops = $this->formatStops($route->stops, $route->route_date);
