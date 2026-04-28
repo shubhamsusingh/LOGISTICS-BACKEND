@@ -28,8 +28,6 @@ class RouteController extends Controller
                 return response()->json(['message' => 'No vehicles available'], 400);
             }
 
-            $vehicleCapacity = $vehicles->first()->capacity;
-
             $demands = DailyDemand::whereDate('demad_date', now())
                 ->where('is_assigned', 0)
                 ->orderByDesc('quantity')
@@ -42,54 +40,79 @@ class RouteController extends Controller
             $routes = [];
             $currentRoute = [];
             $currentLoad = 0;
+            $vehicleIndex = 0;
+
+            // ✅ Use the actual vehicle's capacity for the current vehicle
+            $currentVehicle = $vehicles[$vehicleIndex];
+            $currentCapacity = $currentVehicle->capacity;
 
             foreach ($demands as $demand) {
-                if ($currentLoad + $demand->quantity <= $vehicleCapacity) {
+                // ✅ If this demand alone exceeds any single vehicle capacity, skip or handle
+                if ($demand->quantity > $currentCapacity) {
+                    // Log or handle oversized demand — skip for now
+                    continue;
+                }
+
+                if ($currentLoad + $demand->quantity <= $currentCapacity) {
+                    // ✅ Fits in current vehicle — keep filling
                     $currentRoute[] = $demand;
                     $currentLoad += $demand->quantity;
                 } else {
-                    $routes[] = $currentRoute;
+                    // ✅ Current vehicle is full — save route and move to next vehicle
+                    if (! empty($currentRoute)) {
+                        $routes[] = [
+                            'vehicle' => $currentVehicle,
+                            'demands' => $currentRoute,
+                        ];
+                    }
+
+                    // Move to next vehicle (cycle if needed)
+                    $vehicleIndex++;
+                    if (! isset($vehicles[$vehicleIndex])) {
+                        $vehicleIndex = 0;
+                    }
+
+                    $currentVehicle = $vehicles[$vehicleIndex];
+                    $currentCapacity = $currentVehicle->capacity;
+
                     $currentRoute = [$demand];
                     $currentLoad = $demand->quantity;
                 }
             }
 
+            // ✅ Don't forget the last route
             if (! empty($currentRoute)) {
-                $routes[] = $currentRoute;
+                $routes[] = [
+                    'vehicle' => $currentVehicle,
+                    'demands' => $currentRoute,
+                ];
             }
 
-            $vehicleIndex = 0;
-
+            // ✅ Now create DB records
             foreach ($routes as $routeData) {
-                if (! isset($vehicles[$vehicleIndex])) {
-                    $vehicleIndex = 0;
-                }
+                $vehicle = $routeData['vehicle'];
+                $demandsForRoute = $routeData['demands'];
 
-                $vehicle = $vehicles[$vehicleIndex];
-                $totalLoad = collect($routeData)->sum('quantity');
-
-                // ✅ Optimize stop order using Haversine (no API needed)
-                // ✅ Optimize stop order using Haversine (no API needed)
-                $orderedDemands = $this->optimizeRouteOrder($routeData);
+                $totalLoad = collect($demandsForRoute)->sum('quantity');
+                $orderedDemands = $this->optimizeRouteOrder($demandsForRoute);
 
                 $route = LogisticRoute::create([
                     'vehicle_id' => $vehicle->id,
                     'route_date' => now(),
-                    'total_distance' => $this->lastRouteDistance, // ✅ now has real value in km
+                    'total_distance' => $this->lastRouteDistance,
                     'total_load' => $totalLoad,
                 ]);
+
                 foreach ($orderedDemands as $index => $demand) {
                     RouteStop::create([
                         'route_id' => $route->route_id,
                         'location_id' => $demand->location_id,
                         'stop_order' => $index + 1,
-                        'delivered_quantity' => $demand->quantity,
+                        'delivered_quantity' => 0, // ✅ start at 0
                     ]);
 
                     $demand->update(['is_assigned' => 1]);
                 }
-
-                $vehicleIndex++;
             }
 
             DB::commit();
@@ -109,88 +132,67 @@ class RouteController extends Controller
     // ✅ THIS METHOD WAS MISSING — now restored
     private function optimizeRouteOrder(array $demands): array
     {
-        // ✅ Always reset before each route calculation
         $this->lastRouteDistance = 0;
 
         if (count($demands) === 0) {
             return $demands;
         }
 
-        // ✅ Handle single stop: depot → stop → back to depot
-        if (count($demands) === 1) {
-            $loc = DeliveryLocation::find($demands[0]->location_id);
-
-            if ($loc) {
-                $toStop = $this->haversineDistance($this->depotLat, $this->depotLng, $loc->latitude, $loc->longitude);
-                $backToDepot = $this->haversineDistance($loc->latitude, $loc->longitude, $this->depotLat, $this->depotLng);
-                $this->lastRouteDistance = round(($toStop + $backToDepot) / 1000, 2);
-            }
-
-            return $demands;
-        }
-
-        // Multiple stops
+        // Load all locations upfront
         $locationIds = collect($demands)->pluck('location_id')->unique()->toArray();
         $locations = DeliveryLocation::whereIn('id', $locationIds)->get()->keyBy('id');
 
-        $coords = [[
-            'lat' => $this->depotLat,
-            'lng' => $this->depotLng,
-            'demand' => null,
-        ]];
-
+        // Build stop list: each demand maps to its coordinates
+        $stops = [];
         foreach ($demands as $demand) {
             $loc = $locations[$demand->location_id] ?? null;
-
             if (! $loc) {
                 throw new \Exception("Location not found for location_id: {$demand->location_id}");
             }
-
-            $coords[] = [
-                'lat' => $loc->latitude,
-                'lng' => $loc->longitude,
+            $stops[] = [
+                'lat' => (float) $loc->latitude,
+                'lng' => (float) $loc->longitude,
                 'demand' => $demand,
             ];
         }
 
-        $matrix = $this->fetchDistanceMatrix($coords);
-        $n = count($coords);
-        $visited = array_fill(0, $n, false);
-        $visited[0] = true;
-        $ordered = [];
-        $orderedCoords = [];
-        $current = 0;
+        $ordered = [];      // final ordered demand objects
+        $totalDistance = 0.0;
 
-        for ($step = 0; $step < $n - 1; $step++) {
-            $nearest = null;
-            $nearestDist = PHP_INT_MAX;
+        $currentLat = $this->depotLat;
+        $currentLng = $this->depotLng;
+        $remaining = $stops;   // unvisited stops
 
-            for ($j = 1; $j < $n; $j++) {
-                if (! $visited[$j] && $matrix[$current][$j] < $nearestDist) {
-                    $nearest = $j;
-                    $nearestDist = $matrix[$current][$j];
+        while (! empty($remaining)) {
+            $nearestIndex = null;
+            $nearestDist = PHP_FLOAT_MAX;
+
+            // Find the nearest unvisited stop from current position
+            foreach ($remaining as $i => $stop) {
+                $dist = $this->haversineDistance($currentLat, $currentLng, $stop['lat'], $stop['lng']);
+                if ($dist < $nearestDist) {
+                    $nearestDist = $dist;
+                    $nearestIndex = $i;
                 }
             }
 
-            $visited[$nearest] = true;
-            $ordered[] = $coords[$nearest]['demand'];
-            $orderedCoords[] = $nearest;
-            $current = $nearest;
+            // Move to nearest stop
+            $nearest = $remaining[$nearestIndex];
+            $totalDistance += $nearestDist;
+
+            $currentLat = $nearest['lat'];
+            $currentLng = $nearest['lng'];
+
+            $ordered[] = $nearest['demand'];
+
+            // Remove visited stop
+            array_splice($remaining, $nearestIndex, 1);
         }
 
-        // Calculate total distance: depot → stop1 → stop2 → ... → last stop → depot
-        $totalDistance = 0;
-        $prev = 0;
+        // Add return trip from last stop back to depot
+        $totalDistance += $this->haversineDistance($currentLat, $currentLng, $this->depotLat, $this->depotLng);
 
-        foreach ($orderedCoords as $idx) {
-            $totalDistance += $matrix[$prev][$idx];
-            $prev = $idx;
-        }
-
-        // ✅ Add return trip: last stop → depot
-        $totalDistance += $matrix[$prev][0];
-
-        $this->lastRouteDistance = round($totalDistance / 1000, 2); // km
+        $this->lastRouteDistance = round($totalDistance / 1000, 2); // meters → km
 
         return $ordered;
     }
